@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>路面损伤检测智能体 — Pavement Inspector AI</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- ===== 顶部导航栏 ===== -->
+    <header class="header">
+        <div class="header-inner">
+            <div class="logo">
+                <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+                    <rect width="32" height="32" rx="8" fill="#2563eb"/>
+                    <path d="M8 18h4l2-8h4l2 8h4" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <circle cx="10" cy="20" r="2" fill="#fff"/>
+                    <circle cx="22" cy="20" r="2" fill="#fff"/>
+                </svg>
+                <div>
+                    <h1>路面损伤检测智能体</h1>
+                    <span class="subtitle">Pavement Inspector — 基于通义千问 VL 多模态大模型</span>
+                </div>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-sm btn-outline" id="btnDemo" title="加载演示示例">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                        <rect x="1" y="2" width="14" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/>
+                        <polygon points="6,5 11,8 6,11" fill="currentColor"/>
+                    </svg>
+                    演示
+                </button>
+                <button class="btn btn-sm btn-outline" id="btnHistory" title="历史记录">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                        <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/>
+                        <path d="M8 5v3l2 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    </svg>
+                    历史
+                </button>
+                <button class="btn btn-sm btn-outline" id="btnSettings" title="设置 API Key">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                        <circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.5"/>
+                        <path d="M8 1v2m0 10v2M1 8h2m10 0h2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    </svg>
+                    设置
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- ===== 主内容区 ===== -->
+    <main class="main-container">
+        <!-- 左侧：图片上传区 -->
+        <section class="panel panel-upload">
+            <div class="panel-header">
+                <h2>📷 上传路面图片</h2>
+                <span class="badge" id="badgeMode">标准模式</span>
+            </div>
+
+            <!-- 拖拽上传区 -->
+            <div class="upload-zone" id="uploadZone">
+                <div class="upload-zone-inner">
+                    <svg width="48" height="48" viewBox="0 0 48 48" fill="none" class="upload-icon">
+                        <rect x="6" y="10" width="36" height="28" rx="4" stroke="currentColor" stroke-width="2"/>
+                        <circle cx="17" cy="20" r="3" stroke="currentColor" stroke-width="1.5"/>
+                        <path d="M6 34l10-10 8 8 6-6 12 12" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                    </svg>
+                    <p class="upload-text">拖拽图片到此处 或 <span class="link">点击上传</span></p>
+                    <p class="upload-hint">支持 JPG / PNG / WEBP，建议分辨率 ≥ 512×512</p>
+                </div>
+                <input type="file" id="fileInput" accept="image/jpeg,image/png,image/webp" hidden>
+            </div>
+
+            <!-- 图片预览 -->
+            <div class="preview-container" id="previewContainer" style="display:none;">
+                <div class="preview-header">
+                    <span id="previewFilename">image.jpg</span>
+                    <div>
+                        <button class="btn btn-xs btn-outline" id="btnReselect">重新选择</button>
+                        <button class="btn btn-xs btn-outline" id="btnClearImage">清除</button>
+                    </div>
+                </div>
+                <div class="preview-image-wrapper">
+                    <img id="previewImage" src="" alt="路面图片预览">
+                    <!-- CV模型标注叠加层 -->
+                    <canvas id="annotationCanvas" class="annotation-overlay"></canvas>
+                </div>
+                <div class="image-info" id="imageInfo"></div>
+            </div>
+
+            <!-- 工作模式选择 -->
+            <div class="mode-selector">
+                <label class="mode-option active" id="modeStandard">
+                    <input type="radio" name="workMode" value="standard" checked>
+                    <div class="mode-content">
+                        <strong>🔍 标准检测</strong>
+                        <span>LLM 直接分析路面损伤</span>
+                    </div>
+                </label>
+                <label class="mode-option" id="modeCompare">
+                    <input type="radio" name="workMode" value="compare">
+                    <div class="mode-content">
+                        <strong>📊 CV 校验模式</strong>
+                        <span>用 LLM 矫正传统 CV 模型结果</span>
+                    </div>
+                </label>
+            </div>
+
+            <!-- CV模型数据上传（校验模式） -->
+            <div class="cv-upload" id="cvUploadSection" style="display:none;">
+                <div class="cv-upload-header">
+                    <h3>📎 上传 CV 模型检测结果 (JSON)</h3>
+                </div>
+                <textarea id="cvJsonInput" placeholder="粘贴 CV 模型的检测结果 (JSON 格式)…&#10;例如：&#10;{&#10;  &quot;detections&quot;: [&#10;    { &quot;type&quot;: &quot;crack&quot;, &quot;bbox&quot;: [100,200,300,250], &quot;confidence&quot;: 0.85 }&#10;  ]&#10;}" rows="6"></textarea>
+                <div class="cv-upload-footer">
+                    <button class="btn btn-sm btn-outline" id="btnLoadSampleCV">加载示例</button>
+                    <span class="hint">LLM 将对 CV 检测结果进行校验、补充和修正</span>
+                </div>
+            </div>
+
+            <!-- 演示模式提示 -->
+            <div class="demo-hint" id="demoHint">
+                <span>💡 没有路面图片？</span>
+                <button class="btn btn-xs btn-outline" id="btnLoadDemo">加载演示示例</button>
+            </div>
+
+            <!-- 分析按钮 -->
+            <button class="btn btn-primary btn-lg btn-full" id="btnAnalyze" disabled>
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                    <circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="2"/>
+                    <path d="M10 6v4l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                开始分析
+            </button>
+
+            <!-- 加载状态 -->
+            <div class="loading-container" id="loadingContainer" style="display:none;">
+                <div class="spinner"></div>
+                <div class="loading-text">
+                    <p class="loading-title">AI 正在分析路面图片…</p>
+                    <p class="loading-sub" id="loadingStatus">调用通义千问 VL 多模态模型…</p>
+                </div>
+                <div class="loading-bar-wrapper">
+                    <div class="loading-bar" id="loadingBar"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 右侧：结果展示区 -->
+        <section class="panel panel-results">
+            <div class="panel-header">
+                <h2>📋 检测报告</h2>
+                <div class="panel-header-actions">
+                    <button class="btn btn-sm btn-outline" id="btnExportPDF" disabled>导出报告</button>
+                    <button class="btn btn-sm btn-outline" id="btnCopyReport" disabled>复制</button>
+                </div>
+            </div>
+
+            <!-- 空状态 -->
+            <div class="empty-state" id="emptyState">
+                <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+                    <rect x="12" y="16" width="40" height="32" rx="4" stroke="currentColor" stroke-width="2" opacity="0.3"/>
+                    <path d="M24 32h16M24 40h10" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
+                </svg>
+                <p>上传路面图片并点击"开始分析"</p>
+                <p class="hint">AI 将自动识别：裂缝、坑槽、车辙、松散、修补等损伤类型</p>
+            </div>
+
+            <!-- 结果内容 -->
+            <div class="results-content" id="resultsContent" style="display:none;">
+                <!-- 总览卡片 -->
+                <div class="overview-card" id="overviewCard">
+                    <div class="pci-display" id="pciDisplay">
+                        <div class="pci-ring">
+                            <svg viewBox="0 0 120 120">
+                                <circle cx="60" cy="60" r="52" stroke="#e5e7eb" stroke-width="8" fill="none"/>
+                                <circle id="pciArc" cx="60" cy="60" r="52" stroke="#2563eb" stroke-width="8"
+                                    fill="none" stroke-linecap="round" stroke-dasharray="326.7"
+                                    stroke-dashoffset="65" transform="rotate(-90 60 60)"/>
+                            </svg>
+                            <span class="pci-value" id="pciValue">--</span>
+                        </div>
+                        <div class="pci-label">
+                            <strong>路面状况指数</strong>
+                            <span>Pavement Condition Index</span>
+                        </div>
+                    </div>
+                    <div class="overview-meta">
+                        <div class="meta-item">
+                            <span class="meta-label">损伤数量</span>
+                            <span class="meta-value" id="metaCount">--</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">严重等级</span>
+                            <span class="meta-value" id="metaSeverity">--</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">维护优先级</span>
+                            <span class="meta-value" id="metaPriority">--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 损伤列表 -->
+                <div class="damage-list" id="damageList">
+                    <h3>损伤详情</h3>
+                </div>
+
+                <!-- 综合评估 -->
+                <div class="assessment-card" id="assessmentCard">
+                    <h3>综合评估与建议</h3>
+                    <div class="assessment-body" id="assessmentBody"></div>
+                </div>
+
+                <!-- CV校验对比（仅在对比模式下显示） -->
+                <div class="compare-card" id="compareCard" style="display:none;">
+                    <h3>🔬 LLM vs CV 模型对比</h3>
+                    <div class="compare-table-wrapper">
+                        <table class="compare-table" id="compareTable">
+                            <thead>
+                                <tr>
+                                    <th>对比维度</th>
+                                    <th>CV 模型</th>
+                                    <th>LLM 分析</th>
+                                    <th>结论</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                    <div class="compare-verdict" id="compareVerdict"></div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- ===== 历史记录侧边栏 ===== -->
+    <aside class="history-drawer" id="historyDrawer">
+        <div class="history-drawer-header">
+            <h3>📜 历史记录</h3>
+            <button class="btn btn-xs btn-outline" id="btnClearHistory">清空</button>
+            <button class="btn btn-xs btn-icon" id="btnCloseHistory">✕</button>
+        </div>
+        <div class="history-list" id="historyList">
+            <p class="empty-hint">暂无历史记录</p>
+        </div>
+    </aside>
+    <div class="drawer-overlay" id="drawerOverlay" style="display:none;"></div>
+
+    <!-- ===== 设置弹窗 ===== -->
+    <div class="modal-overlay" id="settingsModal" style="display:none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>⚙️ API 设置</h3>
+                <button class="btn btn-xs btn-icon" id="btnCloseSettings">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="apiKey">阿里云 DashScope API Key</label>
+                    <input type="password" id="apiKey" placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxx"
+                           autocomplete="off">
+                    <span class="form-hint">
+                        在 <a href="https://dashscope.console.aliyun.com/apiKey" target="_blank" rel="noopener">
+                        阿里云 DashScope 控制台</a> 获取 API Key
+                    </span>
+                </div>
+                <div class="form-group">
+                    <label for="modelSelect">模型选择</label>
+                    <select id="modelSelect">
+                        <option value="qwen-vl-max" selected>qwen-vl-max（推荐，最强视觉理解）</option>
+                        <option value="qwen-vl-plus">qwen-vl-plus（快速响应）</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="saveApiKey">
+                        将 API Key 保存在本地（仅存储于浏览器 localStorage）
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" id="btnTestConnection">测试连接</button>
+                <button class="btn btn-primary" id="btnSaveSettings">保存设置</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Toast 通知 ===== -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
